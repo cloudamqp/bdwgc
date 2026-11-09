@@ -166,6 +166,11 @@ TESTS += markstacktest$(EXEEXT)
 check_PROGRAMS += markstacktest
 markstacktest_SOURCES = tests/markstack.c
 markstacktest_LDADD = $(test_ldadd) $(THREADDLLIBS)
+
+TESTS += pushallgrowtest$(EXEEXT)
+check_PROGRAMS += pushallgrowtest
+pushallgrowtest_SOURCES = tests/pushallgrow.c
+pushallgrowtest_LDADD = $(test_ldadd) $(THREADDLLIBS)
 endif
 endif
 
@@ -185,6 +190,7 @@ check-without-test-driver: $(TESTS)
 	test ! -f initsecondarythread_test$(EXEEXT) \
 	  || ./initsecondarythread_test$(EXEEXT)
 	test ! -f markstacktest$(EXEEXT) || ./markstacktest$(EXEEXT)
+	test ! -f pushallgrowtest$(EXEEXT) || ./pushallgrowtest$(EXEEXT)
 	test ! -f stopfunctest$(EXEEXT) || ./stopfunctest$(EXEEXT)
 	test ! -f test_atomic_ops$(EXEEXT) || ./test_atomic_ops$(EXEEXT)
 	test ! -f threadkey_test$(EXEEXT) || ./threadkey_test$(EXEEXT)
