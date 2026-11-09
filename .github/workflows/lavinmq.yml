@@ -1,0 +1,95 @@
+name: LavinMQ
+
+on:
+  push:
+    branches: [lavinmq]
+    tags: ['v*-lavinmq.*']
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CFLAGS: -fPIC -pipe -O2 -std=gnu17
+  CONFIGURE_FLAGS: --disable-debug --disable-shared --enable-large-config
+
+jobs:
+  dist:
+    runs-on: ubuntu-26.04
+    steps:
+      - run: sudo apt-get update && sudo apt-get install -y autoconf automake libtool
+      - uses: actions/checkout@v7
+      - run: ./autogen.sh
+      - run: ./configure $CONFIGURE_FLAGS
+      - run: make -j"$(nproc)" distcheck DISTCHECK_CONFIGURE_FLAGS="$CONFIGURE_FLAGS"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: gc-*.tar.gz
+          if-no-files-found: error
+
+  test:
+    name: ${{ matrix.os }} GC_MARKERS=${{ matrix.markers }}
+    needs: dist
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-x86_64, ubuntu-arm64, el9-x86_64, el9-arm64, alpine-x86_64, macos]
+        markers: [default, '1']
+        include:
+          - os: ubuntu-x86_64
+            runner: ubuntu-26.04
+          - os: ubuntu-arm64
+            runner: ubuntu-26.04-arm
+          - os: el9-x86_64
+            runner: ubuntu-26.04
+            container: almalinux:9
+          - os: el9-arm64
+            runner: ubuntu-26.04-arm
+            container: almalinux:9
+          - os: alpine-x86_64
+            runner: ubuntu-26.04
+            container: alpine:latest
+          - os: macos
+            runner: macos-26
+    steps:
+      - name: Install build tools
+        run: |
+          if command -v apk; then
+            apk add build-base linux-headers
+          elif command -v dnf; then
+            dnf install -y gcc make diffutils
+          fi
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+      - run: tar -xzf gc-*.tar.gz --strip-components=1
+      - run: ./configure $CONFIGURE_FLAGS
+      - run: make -j"$(getconf _NPROCESSORS_ONLN)"
+      - name: make check
+        env:
+          MARKERS: ${{ matrix.markers }}
+        run: |
+          [ "$MARKERS" = default ] || export GC_MARKERS="$MARKERS"
+          make -j"$(getconf _NPROCESSORS_ONLN)" check VERBOSE=1
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: test
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          mv "gc-${version%-lavinmq.*}.tar.gz" "gc-$version.tar.gz"
+          gh release create "$GITHUB_REF_NAME" "gc-$version.tar.gz" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
