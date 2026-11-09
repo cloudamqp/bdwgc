@@ -2483,6 +2483,8 @@ GC_EXTERN void (*GC_print_heap_obj)(ptr_t p);
 
 GC_EXTERN GC_bool GC_print_back_height;
 
+GC_EXTERN int GC_grow_mark_stack; /* defined in mark.c */
+
 #ifdef MAKE_BACK_GRAPH
   void GC_print_back_graph_stats(void);
 #endif
