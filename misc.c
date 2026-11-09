@@ -1130,6 +1130,9 @@ GC_API void GC_CALL GC_init(void)
     if (0 != GETENV("GC_NO_BLACKLIST_WARNING")) {
       GC_large_alloc_warn_interval = LONG_MAX;
     }
+    if (0 != GETENV("GC_DISABLE_GROW_MARK_STACK")) {
+      GC_grow_mark_stack = 0;
+    }
     {
       char * addr_string = GETENV("GC_TRACE");
       if (0 != addr_string) {

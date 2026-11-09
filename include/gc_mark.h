@@ -322,6 +322,12 @@ GC_API void GC_CALL GC_enumerate_reachable_objects_inner(
                                 GC_reachable_object_proc,
                                 void * /* client_data */) GC_ATTR_NONNULL(1);
 
+/* Grow the global mark stack on overflow in parallel mode.  On by      */
+/* default, unless the GC_DISABLE_GROW_MARK_STACK environment variable  */
+/* is set.                                                              */
+GC_API void GC_CALL GC_set_grow_mark_stack(int);
+GC_API int GC_CALL GC_get_grow_mark_stack(void);
+
 GC_API int GC_CALL GC_is_tmp_root(void *);
 
 GC_API void GC_CALL GC_print_trace(GC_word /* gc_no */);

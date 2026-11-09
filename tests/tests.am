@@ -155,6 +155,20 @@ endif
 
 endif
 
+if THREADS
+TESTS += stopfunctest$(EXEEXT)
+check_PROGRAMS += stopfunctest
+stopfunctest_SOURCES = tests/stopfunc.c
+stopfunctest_LDADD = $(test_ldadd) $(THREADDLLIBS)
+
+if !ENABLE_SHARED
+TESTS += markstacktest$(EXEEXT)
+check_PROGRAMS += markstacktest
+markstacktest_SOURCES = tests/markstack.c
+markstacktest_LDADD = $(test_ldadd) $(THREADDLLIBS)
+endif
+endif
+
 # Run the tests directly (without test-driver):
 .PHONY: check-without-test-driver
 check-without-test-driver: $(TESTS)
@@ -170,6 +184,8 @@ check-without-test-driver: $(TESTS)
 	test ! -f disclaim_weakmap_test$(EXEEXT) || ./disclaim_weakmap_test$(EXEEXT)
 	test ! -f initsecondarythread_test$(EXEEXT) \
 	  || ./initsecondarythread_test$(EXEEXT)
+	test ! -f markstacktest$(EXEEXT) || ./markstacktest$(EXEEXT)
+	test ! -f stopfunctest$(EXEEXT) || ./stopfunctest$(EXEEXT)
 	test ! -f test_atomic_ops$(EXEEXT) || ./test_atomic_ops$(EXEEXT)
 	test ! -f threadkey_test$(EXEEXT) || ./threadkey_test$(EXEEXT)
 	test ! -f threadleaktest$(EXEEXT) || ./threadleaktest$(EXEEXT)
