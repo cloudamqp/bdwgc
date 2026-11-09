@@ -300,6 +300,12 @@ GC_API void GC_CALL GC_set_mark_bit(const void *) GC_ATTR_NONNULL(1);
 /* is scanned immediately, not just scheduled for scanning.             */
 GC_API void GC_CALL GC_push_all(void * /* bottom */, void * /* top */);
 GC_API void GC_CALL GC_push_all_eager(void * /* bottom */, void * /* top */);
+/* Same as GC_push_all but grows the mark stack instead of aborting   */
+/* when it is full, so marker threads can share the scanning.  Same   */
+/* as GC_push_all_eager without parallel marking or if mark stack     */
+/* growth is switched off.  Only for use while the roots are pushed,  */
+/* e.g. from a GC_push_other_roots callback.                          */
+GC_API void GC_CALL GC_push_all_grow(void * /* bottom */, void * /* top */);
 GC_API void GC_CALL GC_push_conditional(void * /* bottom */, void * /* top */,
                                         int /* bool all */);
 GC_API void GC_CALL GC_push_finalizer_structures(void);

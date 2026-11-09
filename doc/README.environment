@@ -66,8 +66,8 @@ GC_MARKERS=<n> - Only if compiled with PARALLEL_MARK.  Set the number
 GC_DISABLE_GROW_MARK_STACK - Only if compiled with PARALLEL_MARK.  Do not
                 grow the global mark stack when it overflows while marking
                 in parallel, e.g. while the roots are pushed, as the
-                collector did before.  Program settable with
-                GC_set_grow_mark_stack(0).
+                collector did before, and make GC_push_all_grow push
+                eagerly.  Program settable with GC_set_grow_mark_stack(0).
 
 GC_NO_BLACKLIST_WARNING - Prevents the collector from issuing
                 warnings about allocations of very large blocks.

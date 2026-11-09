@@ -1240,6 +1240,33 @@ GC_API void GC_CALL GC_push_all(void *bottom, void *top)
     GC_mark_stack_top -> mse_descr.w = length;
 }
 
+/* The roots are pushed with the allocation lock held and before any  */
+/* marking starts, so nothing else points into the mark stack and it  */
+/* can be moved.  The old stack is not recycled, since that adds to   */
+/* the heap in the middle of pushing the roots.  With one marker      */
+/* nobody can take a range over, so it is scanned right away instead.  */
+GC_API void GC_CALL GC_push_all_grow(void *bottom, void *top)
+{
+    if (!GC_parallel || !GC_grow_mark_stack) {
+        GC_push_all_eager(bottom, top);
+        return;
+    }
+    if ((word)(GC_mark_stack_top + 1) >= (word)GC_mark_stack_limit) {
+        size_t n = 2 * GC_mark_stack_size;
+        mse *new_stack = (mse *)GC_scratch_alloc(n * sizeof(mse));
+
+        if (NULL == new_stack) ABORT("Failed to grow mark stack");
+        BCOPY(GC_mark_stack, new_stack, GC_mark_stack_size * sizeof(mse));
+        GC_mark_stack_top = new_stack + (GC_mark_stack_top - GC_mark_stack);
+        GC_mark_stack = new_stack;
+        GC_mark_stack_size = n;
+        GC_mark_stack_limit = new_stack + n;
+        GC_COND_LOG_PRINTF("Grew mark stack to %lu frames\n",
+                           (unsigned long)n);
+    }
+    GC_push_all(bottom, top);
+}
+
 #ifndef GC_DISABLE_INCREMENTAL
 
   /* Analogous to the above, but push only those pages h with           */
