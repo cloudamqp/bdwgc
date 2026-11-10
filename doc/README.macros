@@ -308,6 +308,12 @@ MINHINCR=<n>, MAXHINCR=<n>  Set the minimum and maximum heap increment, in
   faster; scale them down to keep the increments in bytes, e.g.
   -DHBLKSIZE=16384 -DMINHINCR=16 -DMAXHINCR=1024 with LARGE_CONFIG.
 
+STEAL_MARK_STACK_RANGES  With parallel marking, a marker claims a range of
+  global mark stack entries with one compare-and-swap of GC_first_nonempty,
+  so each entry is taken by exactly one marker, and takes a fair share of
+  the stack (half of it divided by the markers) at once, up to
+  MAX_ENTRIES_TO_GET (LOCAL_MARK_STACK_SIZE/8 by default).  Off by default.
+
 USE_MMAP        Use MMAP instead of sbrk to get new memory.
   Works for Linux, FreeBSD, Cygwin, Solaris and Irix.
 

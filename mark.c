@@ -807,9 +807,11 @@ GC_INNER mse * GC_mark_from(mse *mark_stack_top, mse *mark_stack,
 #ifdef PARALLEL_MARK
 
 STATIC GC_bool GC_help_wanted = FALSE;  /* Protected by mark lock.      */
-STATIC unsigned GC_helper_count = 0;    /* Number of running helpers.   */
+/* The helper counts are updated only with the mark lock held, but     */
+/* read without it as a hint with STEAL_MARK_STACK_RANGES.              */
+STATIC volatile AO_t GC_helper_count = 0; /* Number of running helpers. */
                                         /* Protected by mark lock.      */
-STATIC unsigned GC_active_count = 0;    /* Number of active helpers.    */
+STATIC volatile AO_t GC_active_count = 0; /* Number of active helpers.  */
                                         /* Protected by mark lock.      */
                                         /* May increase and decrease    */
                                         /* within each mark cycle.  But */
@@ -865,6 +867,36 @@ GC_INNER void GC_wait_for_markers_init(void)
     GC_wait_for_reclaim();
   }
 }
+
+#ifdef STEAL_MARK_STACK_RANGES
+/* Claim the global mark stack entries from low (GC_first_nonempty as   */
+/* the caller saw it) up to high (the published top) or n_to_get        */
+/* entries (a big object counts as several), by one CAS of              */
+/* GC_first_nonempty, and copy them to local.  Entries between          */
+/* GC_first_nonempty and GC_mark_stack_top are never modified during a  */
+/* parallel mark phase, and GC_first_nonempty never decreases, so each  */
+/* entry is taken by exactly one marker.  Returns the number of claimed */
+/* entries, 0 if another marker moved GC_first_nonempty meanwhile.      */
+STATIC size_t GC_steal_mark_stack_range(mse *low, mse *high, mse *local,
+                                        size_t n_to_get)
+{
+    mse *p;
+    size_t i = 0;
+
+    GC_ASSERT((word)high >= (word)low
+              && (word)(high - low + 1) <= GC_mark_stack_size);
+    for (p = low; (word)p <= (word)high && i <= n_to_get; ++p) {
+        word descr = (word)AO_load(&p->mse_descr.ao);
+
+        ++i;
+        if ((descr & GC_DS_TAGS) == GC_DS_LENGTH) i += (size_t)(descr >> 8);
+    }
+    if (!AO_compare_and_swap(&GC_first_nonempty, (AO_t)low, (AO_t)p))
+        return 0;
+    BCOPY(low, local, (size_t)(p - low) * sizeof(mse));
+    return (size_t)(p - low);
+}
+#endif
 
 /* Steal mark stack entries starting at mse low into mark stack local   */
 /* until we either steal mse high, or we have max entries.              */
@@ -946,6 +978,13 @@ static GC_bool has_inactive_helpers(void)
 {
   GC_bool res;
 
+# ifdef STEAL_MARK_STACK_RANGES
+    /* GC_first_nonempty is exact, so the global stack looks empty      */
+    /* after almost every GC_mark_from; skip the lock while all the     */
+    /* helpers are likely active.  A stale answer only delays a split.  */
+    if (AO_load(&GC_active_count) >= AO_load(&GC_helper_count))
+      return FALSE;
+# endif
   GC_acquire_mark_lock();
   res = GC_active_count < GC_helper_count;
   GC_release_mark_lock();
@@ -996,6 +1035,9 @@ STATIC void GC_do_local_mark(mse *local_mark_stack, mse *local_top)
 #ifndef ENTRIES_TO_GET
 # define ENTRIES_TO_GET 5
 #endif
+#if defined(STEAL_MARK_STACK_RANGES) && !defined(MAX_ENTRIES_TO_GET)
+# define MAX_ENTRIES_TO_GET (LOCAL_MARK_STACK_SIZE / 8)
+#endif
 
 /* Mark using the local mark stack until the global mark stack is empty */
 /* and there are no active workers. Update GC_first_nonempty to reflect */
@@ -1006,7 +1048,7 @@ STATIC void GC_mark_local(mse *local_mark_stack, int id)
 {
     mse * my_first_nonempty;
 
-    GC_active_count++;
+    AO_store(&GC_active_count, GC_active_count + 1);
     my_first_nonempty = (mse *)AO_load(&GC_first_nonempty);
     GC_ASSERT((word)GC_mark_stack <= (word)my_first_nonempty);
     GC_ASSERT((word)my_first_nonempty
@@ -1018,6 +1060,13 @@ STATIC void GC_mark_local(mse *local_mark_stack, int id)
         unsigned n_to_get;
         mse * my_top;
         mse * local_top;
+#     ifdef STEAL_MARK_STACK_RANGES
+        size_t n_stolen;
+
+        /* Exact: entries below it are claimed, the rest are not.        */
+        my_first_nonempty = (mse *)AO_load(&GC_first_nonempty);
+        GC_ASSERT((word)my_first_nonempty >= (word)GC_mark_stack);
+#     else
         mse * global_first_nonempty = (mse *)AO_load(&GC_first_nonempty);
 
         GC_ASSERT((word)my_first_nonempty >= (word)GC_mark_stack &&
@@ -1036,15 +1085,22 @@ STATIC void GC_mark_local(mse *local_mark_stack, int id)
         }
         /* Perhaps we should also update GC_first_nonempty, if it */
         /* is less.  But that would require using atomic updates. */
+#     endif
         my_top = (mse *)AO_load_acquire((volatile AO_t *)(&GC_mark_stack_top));
         if ((word)my_top < (word)my_first_nonempty) {
             GC_acquire_mark_lock();
             my_top = GC_mark_stack_top;
                 /* Asynchronous modification impossible here,   */
                 /* since we hold mark lock.                     */
+#           ifdef STEAL_MARK_STACK_RANGES
+              /* A claimed range ends at or below the top its claimer saw */
+              /* and the top never decreases, so this is <= my_top + 1.   */
+              my_first_nonempty = (mse *)AO_load(&GC_first_nonempty);
+              GC_ASSERT((word)(my_top + 1) >= (word)my_first_nonempty);
+#           endif
             n_on_stack = my_top - my_first_nonempty + 1;
             if (0 == n_on_stack) {
-                GC_active_count--;
+                AO_store(&GC_active_count, GC_active_count - 1);
                 GC_ASSERT(GC_active_count <= GC_helper_count);
                 /* Other markers may redeposit objects          */
                 /* on the stack.                                */
@@ -1067,7 +1123,7 @@ STATIC void GC_mark_local(mse *local_mark_stack, int id)
                     /* change.  GC_first_nonempty can only be           */
                     /* incremented asynchronously.  Thus we know that   */
                     /* both conditions actually held simultaneously.    */
-                    GC_helper_count--;
+                    AO_store(&GC_helper_count, GC_helper_count - 1);
                     if (0 == GC_helper_count) need_to_notify = TRUE;
                     GC_VERBOSE_LOG_PRINTF("Finished mark helper %d\n", id);
                     if (need_to_notify) GC_notify_all_marker();
@@ -1075,7 +1131,7 @@ STATIC void GC_mark_local(mse *local_mark_stack, int id)
                 }
                 /* Else there's something on the stack again, or        */
                 /* another helper may push something.                   */
-                GC_active_count++;
+                AO_store(&GC_active_count, GC_active_count + 1);
                 GC_ASSERT(GC_active_count > 0);
                 GC_release_mark_lock();
                 continue;
@@ -1087,9 +1143,23 @@ STATIC void GC_mark_local(mse *local_mark_stack, int id)
         }
         n_to_get = ENTRIES_TO_GET;
         if (n_on_stack < 2 * ENTRIES_TO_GET) n_to_get = 1;
+#     ifdef STEAL_MARK_STACK_RANGES
+        else {
+          /* A fair share: half of the stack divided by the markers.     */
+          size_t fair_share = n_on_stack / (2 * ((size_t)GC_markers_m1 + 1));
+
+          if (fair_share > MAX_ENTRIES_TO_GET) fair_share = MAX_ENTRIES_TO_GET;
+          if (fair_share > n_to_get) n_to_get = (unsigned)fair_share;
+        }
+        n_stolen = GC_steal_mark_stack_range(my_first_nonempty, my_top,
+                                             local_mark_stack, n_to_get);
+        if (0 == n_stolen) continue; /* another marker claimed them */
+        local_top = local_mark_stack + n_stolen - 1;
+#     else
         local_top = GC_steal_mark_stack(my_first_nonempty, my_top,
                                         local_mark_stack, n_to_get,
                                         &my_first_nonempty);
+#     endif
         GC_ASSERT((word)my_first_nonempty >= (word)GC_mark_stack &&
                   (word)my_first_nonempty <=
                         (word)AO_load((volatile AO_t *)&GC_mark_stack_top)
@@ -1113,8 +1183,8 @@ STATIC void GC_do_parallel_mark(void)
     GC_VERBOSE_LOG_PRINTF("Starting marking for mark phase number %lu\n",
                           (unsigned long)GC_mark_no);
     AO_store(&GC_first_nonempty, (AO_t)GC_mark_stack);
-    GC_active_count = 0;
-    GC_helper_count = 1;
+    AO_store(&GC_active_count, 0);
+    AO_store(&GC_helper_count, 1);
     GC_help_wanted = TRUE;
     GC_notify_all_marker();
         /* Wake up potential helpers.   */
@@ -1154,7 +1224,7 @@ GC_INNER void GC_help_marker(word my_mark_no)
       /* act as helpers.  Under Linux they can't.                       */
       return;
     }
-    GC_helper_count = (unsigned)my_id + 1;
+    AO_store(&GC_helper_count, (AO_t)my_id + 1);
     GC_mark_local(local_mark_stack, (int)my_id);
     /* GC_mark_local decrements GC_helper_count. */
 #   undef my_id
