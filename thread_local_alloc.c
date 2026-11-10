@@ -12,6 +12,10 @@
  * modified is included with the above copyright notice.
  */
 
+/* Test GC_manual_vdb inline in the fast path and only then call out,   */
+/* so that the next free object is not spilled around a call.           */
+#define GC_FAST_M_END_CHANGE(my_fl) GC_dirty(my_fl)
+
 #include "private/gc_priv.h"
 
 #if defined(THREAD_LOCAL_ALLOC)

@@ -171,6 +171,11 @@ TESTS += pushallgrowtest$(EXEEXT)
 check_PROGRAMS += pushallgrowtest
 pushallgrowtest_SOURCES = tests/pushallgrow.c
 pushallgrowtest_LDADD = $(test_ldadd) $(THREADDLLIBS)
+
+TESTS += fastmalloctest$(EXEEXT)
+check_PROGRAMS += fastmalloctest
+fastmalloctest_SOURCES = tests/fastmalloc.c
+fastmalloctest_LDADD = $(test_ldadd) $(THREADDLLIBS)
 endif
 endif
 
@@ -189,6 +194,7 @@ check-without-test-driver: $(TESTS)
 	test ! -f disclaim_weakmap_test$(EXEEXT) || ./disclaim_weakmap_test$(EXEEXT)
 	test ! -f initsecondarythread_test$(EXEEXT) \
 	  || ./initsecondarythread_test$(EXEEXT)
+	test ! -f fastmalloctest$(EXEEXT) || ./fastmalloctest$(EXEEXT)
 	test ! -f markstacktest$(EXEEXT) || ./markstacktest$(EXEEXT)
 	test ! -f pushallgrowtest$(EXEEXT) || ./pushallgrowtest$(EXEEXT)
 	test ! -f stopfunctest$(EXEEXT) || ./stopfunctest$(EXEEXT)
