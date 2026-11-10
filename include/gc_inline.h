@@ -94,6 +94,15 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
 # define GC_FAST_M_AO_STORE(my_fl, next) (void)(*(my_fl) = (next))
 #endif
 
+/* An internal macro to tell the collector that the free list pointer   */
+/* has been updated.  The next free object is kept reachable across     */
+/* it, so if it is a call, the compiler may spill the address of that   */
+/* object to the stack, where a stale word then points to the object    */
+/* allocated next.  The collector itself defines it without a call.     */
+#ifndef GC_FAST_M_END_CHANGE
+# define GC_FAST_M_END_CHANGE(my_fl) GC_end_stubborn_change(my_fl)
+#endif
+
 /* The ultimately general inline allocation macro.  Allocate an object  */
 /* of size granules, putting the resulting pointer in result.  tiny_fl  */
 /* is a "tiny" free list array, which will be used first, if the size   */
@@ -131,7 +140,7 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
                 init; \
                 GC_PREFETCH_FOR_WRITE(next); \
                 if ((kind) != GC_I_PTRFREE) { \
-                    GC_end_stubborn_change(my_fl); \
+                    GC_FAST_M_END_CHANGE(my_fl); \
                     GC_reachable_here(next); \
                 } \
                 GC_ASSERT(GC_size(result) >= (granules)*GC_GRANULE_BYTES); \
