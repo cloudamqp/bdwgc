@@ -300,6 +300,12 @@ HBLKSIZE=<ddd>  Explicitly sets the heap block size (where ddd is a power of
   the most likely page size.  Otherwise large values result in more
   fragmentation, but generally better performance for large heaps.
 
+MINHINCR=<n>, MAXHINCR=<n>  Set the minimum and maximum heap increment, in
+  heap blocks (defaults: 16 and 2048, or 64 and 4096 with LARGE_CONFIG).
+  Since they count blocks, a bigger HBLKSIZE grows the heap proportionally
+  faster; scale them down to keep the increments in bytes, e.g.
+  -DHBLKSIZE=16384 -DMINHINCR=16 -DMAXHINCR=1024 with LARGE_CONFIG.
+
 USE_MMAP        Use MMAP instead of sbrk to get new memory.
   Works for Linux, FreeBSD, Cygwin, Solaris and Irix.
 

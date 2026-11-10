@@ -392,14 +392,23 @@ EXTERN_C_BEGIN
 #endif
 
 
-# ifndef LARGE_CONFIG
-#   define MINHINCR 16   /* Minimum heap increment, in blocks of HBLKSIZE  */
-                         /* Must be multiple of largest page size.         */
-#   define MAXHINCR 2048 /* Maximum heap increment, in blocks              */
-# else
+/* Minimum and maximum heap increment, in blocks of HBLKSIZE.  MINHINCR */
+/* must be a multiple of the largest page size.  Both can be set by the */
+/* client, e.g. to keep the increments in bytes with a bigger HBLKSIZE. */
+#ifndef MINHINCR
+# ifdef LARGE_CONFIG
 #   define MINHINCR 64
-#   define MAXHINCR 4096
+# else
+#   define MINHINCR 16
 # endif
+#endif
+#ifndef MAXHINCR
+# ifdef LARGE_CONFIG
+#   define MAXHINCR 4096
+# else
+#   define MAXHINCR 2048
+# endif
+#endif
 
 # define BL_LIMIT GC_black_list_spacing
                            /* If we need a block of N bytes, and we have */
