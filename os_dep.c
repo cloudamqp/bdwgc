@@ -2244,6 +2244,7 @@ void GC_register_data_segments(void)
 
   STATIC ptr_t GC_unix_mmap_get_mem(size_t bytes)
   {
+    size_t map_len = bytes;
     void *result;
     static ptr_t last_addr = HEAP_START;
 
@@ -2271,7 +2272,18 @@ void GC_register_data_segments(void)
 
     GC_ASSERT(GC_page_size != 0);
     if (bytes & (GC_page_size - 1)) ABORT("Bad GET_MEM arg");
-    result = mmap(last_addr, bytes, (PROT_READ | PROT_WRITE)
+    if (HBLKSIZE > GC_page_size) {
+#     ifdef USE_MMAP_FIXED
+        /* The result is at the hint address exactly, so align the hint. */
+        last_addr = (ptr_t)(((word)last_addr + HBLKSIZE - 1)
+                            & ~(word)(HBLKSIZE - 1));
+#     else
+        /* mmap() only guarantees page alignment: map extra space, and  */
+        /* unmap the unneeded head and tail below.                      */
+        map_len = SIZET_SAT_ADD(bytes, HBLKSIZE - GC_page_size);
+#     endif
+    }
+    result = mmap(last_addr, map_len, (PROT_READ | PROT_WRITE)
                                     | (GC_pages_executable ? PROT_EXEC : 0),
                   GC_MMAP_FLAGS | OPT_MAP_ANON, zero_fd, 0/* offset */);
 #   undef IGNORE_PAGES_EXECUTABLE
@@ -2281,6 +2293,15 @@ void GC_register_data_segments(void)
           && (EACCES == errno || EPERM == errno))
         ABORT("Cannot allocate executable pages");
       return NULL;
+    }
+    if (map_len > bytes) {
+      size_t head = (size_t)((((word)result + HBLKSIZE - 1)
+                              & ~(word)(HBLKSIZE - 1)) - (word)result);
+
+      if (head != 0) (void)munmap(result, head);
+      if (map_len - bytes > head)
+        (void)munmap((ptr_t)result + head + bytes, map_len - bytes - head);
+      result = (ptr_t)result + head;
     }
     last_addr = (ptr_t)(((word)result + bytes + GC_page_size - 1)
                         & ~(word)(GC_page_size - 1));
@@ -3452,7 +3473,10 @@ GC_API GC_push_other_roots_proc GC_CALL GC_get_push_other_roots(void)
     GC_VERBOSE_LOG_PRINTF(
                 "Initializing mprotect virtual dirty bit implementation\n");
     if (GC_page_size % HBLKSIZE != 0) {
-        ABORT("Page size not multiple of HBLKSIZE");
+        /* Heap blocks bigger than a page: report incremental mode as   */
+        /* unavailable (full collections are used) instead of aborting. */
+        WARN("Incremental mode unavailable: HBLKSIZE exceeds page size\n", 0);
+        return FALSE;
     }
 #   ifdef GWW_VDB
       if (GC_gww_dirty_init()) {
@@ -4794,7 +4818,8 @@ GC_INNER GC_bool GC_dirty_init(void)
          "exception handling bugs\n", 0);
 # endif
   if (GC_page_size % HBLKSIZE != 0) {
-    ABORT("Page size not multiple of HBLKSIZE");
+    WARN("Incremental mode unavailable: HBLKSIZE exceeds page size\n", 0);
+    return FALSE;
   }
 
   GC_task_self = me = mach_task_self();
