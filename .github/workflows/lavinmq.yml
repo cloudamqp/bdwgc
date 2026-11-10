@@ -12,7 +12,8 @@ permissions:
 env:
   # Must match GC_CFLAGS in LavinMQ's packaging/libgc/Makefile, so CI tests the libgc LavinMQ ships.
   # 16 KiB heap blocks; MINHINCR/MAXHINCR scaled down 4x to keep LARGE_CONFIG's heap increments in bytes.
-  CFLAGS: -fPIC -pipe -O2 -std=gnu17 -DHBLKSIZE=16384 -DMINHINCR=16 -DMAXHINCR=1024
+  # STEAL_MARK_STACK_RANGES: parallel markers claim global mark stack ranges by CAS.
+  CFLAGS: -fPIC -pipe -O2 -std=gnu17 -DHBLKSIZE=16384 -DMINHINCR=16 -DMAXHINCR=1024 -DSTEAL_MARK_STACK_RANGES
   CONFIGURE_FLAGS: --disable-debug --disable-shared --enable-large-config
 
 jobs:
