@@ -107,9 +107,51 @@ jobs:
           [ "$MARKERS" = default ] || export GC_MARKERS="$MARKERS"
           make -j"$(nproc)" check VERBOSE=1
 
+  # crystal-packages compiles the libgc.a of each Crystal image with the build
+  # flags of that distribution, and they change how the compiler lays out the
+  # allocation fast path, which fastmalloctest depends on. The pie row is libgc
+  # without -fPIC, which is enough for a static link into a PIE.
+  cflags:
+    name: ${{ matrix.name }} cflags
+    needs: dist
+    runs-on: ubuntu-26.04
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: debian
+            container: debian:trixie
+            setup: apt-get update && apt-get install -y gcc make dpkg-dev
+            cflags: $(DEB_BUILD_MAINT_OPTIONS=optimize=-lto dpkg-buildflags --get CFLAGS) -fPIC -pipe -std=gnu17
+          - name: fedora
+            container: fedora:43
+            setup: dnf install -y gcc make diffutils tar gzip redhat-rpm-config
+            cflags: $(rpm --define '_lto_cflags %{nil}' --eval '%{build_cflags}') -fPIC -std=gnu17
+          - name: el9
+            container: almalinux:9
+            setup: dnf install -y gcc make diffutils redhat-rpm-config
+            cflags: $(rpm --define '_lto_cflags %{nil}' --eval '%{build_cflags}') -fPIC -std=gnu17
+          - name: alpine
+            container: alpine:latest
+            setup: apk add build-base linux-headers abuild
+            cflags: $(. /usr/share/abuild/default.conf && echo "$CFLAGS") -fPIC -pipe -O2 -std=gnu17
+          - name: pie
+            cflags: -fPIE -pipe -O2 -std=gnu17
+    steps:
+      - if: matrix.setup
+        run: ${{ matrix.setup }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+      - run: tar -xzf gc-*.tar.gz --strip-components=1
+      - run: CFLAGS="${{ matrix.cflags }}" ./configure $CONFIGURE_FLAGS
+      - run: make -j"$(nproc)"
+      - run: make -j"$(nproc)" check VERBOSE=1
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [test, assertions]
+    needs: [test, assertions, cflags]
     runs-on: ubuntu-26.04
     permissions:
       contents: write
