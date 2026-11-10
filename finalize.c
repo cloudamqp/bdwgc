@@ -143,6 +143,10 @@ STATIC void GC_grow_table(struct hash_chain_entry ***table,
         p = next;
       }
     }
+    /* A stale pointer would otherwise keep the old table, and its      */
+    /* buckets whatever reuses the entries freed since.                 */
+    if (*table != NULL)
+      GC_INTERNAL_FREE(*table);
     *log_size_ptr = log_new_size;
     *table = new_table;
     GC_dirty(new_table); /* entire object */

@@ -52,6 +52,11 @@ check_PROGRAMS += hugetest
 hugetest_SOURCES = tests/huge_test.c
 hugetest_LDADD = $(test_ldadd)
 
+TESTS += growtabletest$(EXEEXT)
+check_PROGRAMS += growtabletest
+growtabletest_SOURCES = tests/growtable.c
+growtabletest_LDADD = $(test_ldadd)
+
 TESTS += realloc_test$(EXEEXT)
 check_PROGRAMS += realloc_test
 realloc_test_SOURCES = tests/realloc_test.c
@@ -178,6 +183,7 @@ endif
 .PHONY: check-without-test-driver
 check-without-test-driver: $(TESTS)
 	./gctest$(EXEEXT)
+	./growtabletest$(EXEEXT)
 	./hugetest$(EXEEXT)
 	./leaktest$(EXEEXT)
 	./middletest$(EXEEXT)
