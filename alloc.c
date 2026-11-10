@@ -1531,7 +1531,7 @@ GC_word GC_max_retries = 0;
 
 GC_INNER void GC_scratch_recycle_inner(void *ptr, size_t bytes)
 {
-  size_t page_offset;
+  size_t align, page_offset;
   size_t displ = 0;
   size_t recycled_bytes;
 
@@ -1539,11 +1539,14 @@ GC_INNER void GC_scratch_recycle_inner(void *ptr, size_t bytes)
 
   GC_ASSERT(bytes != 0);
   GC_ASSERT(GC_page_size != 0);
+  /* The recycled region becomes heap, so align it by the larger of     */
+  /* HBLKSIZE and the page size.                                        */
+  align = GC_page_size > HBLKSIZE ? GC_page_size : HBLKSIZE;
   /* TODO: Assert correct memory flags if GWW_VDB */
-  page_offset = (word)ptr & (GC_page_size - 1);
+  page_offset = (word)ptr & (align - 1);
   if (page_offset != 0)
-    displ = GC_page_size - page_offset;
-  recycled_bytes = bytes > displ ? (bytes - displ) & ~(GC_page_size - 1) : 0;
+    displ = align - page_offset;
+  recycled_bytes = bytes > displ ? (bytes - displ) & ~(align - 1) : 0;
   GC_COND_LOG_PRINTF("Recycle %lu/%lu scratch-allocated bytes at %p\n",
                 (unsigned long)recycled_bytes, (unsigned long)bytes, ptr);
   if (recycled_bytes > 0)
